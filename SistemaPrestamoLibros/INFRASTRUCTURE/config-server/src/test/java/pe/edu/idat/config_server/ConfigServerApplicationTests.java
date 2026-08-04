@@ -1,13 +1,15 @@
 package pe.edu.idat.config_server;
 
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.config.server.EnableConfigServer;
 
-@SpringBootTest
-class ConfigServerApplicationTests {
+@SpringBootApplication
+@EnableConfigServer
+public class ConfigServerApplication {
 
-	@Test
-	void contextLoads() {
+	public static void main(String[] args) {
+		SpringApplication.run(ConfigServerApplication.class, args);
 	}
 
 }
