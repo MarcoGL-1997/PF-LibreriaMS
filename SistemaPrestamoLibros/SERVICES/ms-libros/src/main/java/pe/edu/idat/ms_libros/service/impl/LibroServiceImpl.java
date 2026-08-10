@@ -107,10 +107,46 @@ public class LibroServiceImpl implements LibroService {
 
     private LibroEntity obtenerEntidad(Long id) {
 
-        return libroRepository.findByIdAndEstadoTrue(id)
+return libroRepository.findByIdLibroAndEstadoTrue(id)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
                                 "Libro no encontrado con ID: " + id));
+    }
+
+    @Override
+public void disminuirDisponibilidad(Long id) {
+
+    LibroEntity libro = obtenerEntidad(id);
+
+    if (libro.getCantidadDisponible() == null
+            || libro.getCantidadDisponible() <= 0) {
+
+        throw new IllegalStateException(
+                "El libro no tiene ejemplares disponibles."
+        );
+    }
+
+    libro.setCantidadDisponible(
+            libro.getCantidadDisponible() - 1
+    );
+
+    libroRepository.save(libro);
+    }
+
+    @Override
+    public void aumentarDisponibilidad(Long id) {
+
+        LibroEntity libro = obtenerEntidad(id);
+
+        if (libro.getCantidadDisponible() == null) {
+            libro.setCantidadDisponible(1);
+        } else if (libro.getCantidadDisponible() < libro.getCantidadTotal()) {
+            libro.setCantidadDisponible(
+                    libro.getCantidadDisponible() + 1
+            );
+        }
+
+        libroRepository.save(libro);
     }
 
 }

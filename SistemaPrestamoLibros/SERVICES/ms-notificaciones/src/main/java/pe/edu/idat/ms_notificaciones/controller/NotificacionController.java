@@ -66,14 +66,14 @@ public class NotificacionController {
         );
     }
 
-    @PutMapping("/{id}/leer")
-    public ResponseEntity<NotificacionResponse> marcarComoLeida(
-            @PathVariable Long id) {
+        @PutMapping("/{id}/leer")
+        public ResponseEntity<NotificacionResponse> marcarComoLeida(
+                @PathVariable Long id) {
 
         return ResponseEntity.ok(
                 notificacionService.marcarComoLeida(id)
         );
-    }
+        }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminarNotificacion(

@@ -65,4 +65,22 @@ public class LibroController {
         return ResponseEntity.noContent().build();
     }
 
+        @PutMapping("/{id}/disminuir-disponibilidad")
+    public ResponseEntity<Void> disminuirDisponibilidad(
+            @PathVariable Long id) {
+
+        libroService.disminuirDisponibilidad(id);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/aumentar-disponibilidad")
+    public ResponseEntity<Void> aumentarDisponibilidad(
+            @PathVariable Long id) {
+
+        libroService.aumentarDisponibilidad(id);
+
+        return ResponseEntity.noContent().build();
+    }
+
 }

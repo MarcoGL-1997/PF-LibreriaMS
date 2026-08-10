@@ -2,6 +2,7 @@ package pe.edu.idat.ms_prestamos.service.impl;
 
 import feign.FeignException;
 import org.springframework.stereotype.Service;
+
 import pe.edu.idat.ms_prestamos.client.LibroClient;
 import pe.edu.idat.ms_prestamos.client.UsuarioClient;
 import pe.edu.idat.ms_prestamos.exception.BusinessRuleException;
@@ -31,10 +32,11 @@ public class PrestamoServiceImpl implements PrestamoService {
     private final UsuarioClient usuarioClient;
     private final LibroClient libroClient;
 
-    public PrestamoServiceImpl(PrestamoRepository prestamoRepository,
-                               PrestamoMapper prestamoMapper,
-                               UsuarioClient usuarioClient,
-                               LibroClient libroClient) {
+    public PrestamoServiceImpl(
+            PrestamoRepository prestamoRepository,
+            PrestamoMapper prestamoMapper,
+            UsuarioClient usuarioClient,
+            LibroClient libroClient) {
 
         this.prestamoRepository = prestamoRepository;
         this.prestamoMapper = prestamoMapper;
@@ -60,7 +62,8 @@ public class PrestamoServiceImpl implements PrestamoService {
     }
 
     @Override
-    public PrestamoResponse registrarPrestamo(PrestamoRequest request) {
+    public PrestamoResponse registrarPrestamo(
+            PrestamoRequest request) {
 
         validarUsuario(request.getIdUsuario());
 
@@ -80,6 +83,15 @@ public class PrestamoServiceImpl implements PrestamoService {
                     "El usuario ya tiene un préstamo activo de este libro."
             );
         }
+
+        /*
+         * Primero disminuimos la disponibilidad del libro.
+         * El libro ya fue validado anteriormente para confirmar
+         * que existe, está activo y tiene ejemplares disponibles.
+         */
+        libroClient.disminuirDisponibilidad(
+                request.getIdLibro()
+        );
 
         PrestamoEntity prestamo =
                 prestamoMapper.toEntity(request);
@@ -209,7 +221,8 @@ public class PrestamoServiceImpl implements PrestamoService {
             UsuarioClientResponse usuario =
                     usuarioClient.obtenerUsuarioPorId(idUsuario);
 
-            if (!Boolean.TRUE.equals(usuario.getEstado())) {
+            if (!Boolean.TRUE.equals(
+                    usuario.getEstado())) {
 
                 throw new BusinessRuleException(
                         "El usuario no se encuentra activo."
@@ -232,7 +245,8 @@ public class PrestamoServiceImpl implements PrestamoService {
             LibroClientResponse libro =
                     libroClient.obtenerLibroPorId(idLibro);
 
-            if (!Boolean.TRUE.equals(libro.getEstado())) {
+            if (!Boolean.TRUE.equals(
+                    libro.getEstado())) {
 
                 throw new BusinessRuleException(
                         "El libro no se encuentra activo."
@@ -255,5 +269,4 @@ public class PrestamoServiceImpl implements PrestamoService {
             );
         }
     }
-
 }

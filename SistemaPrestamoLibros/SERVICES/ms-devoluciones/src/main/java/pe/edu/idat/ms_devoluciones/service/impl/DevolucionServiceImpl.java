@@ -2,6 +2,8 @@ package pe.edu.idat.ms_devoluciones.service.impl;
 
 import feign.FeignException;
 import org.springframework.stereotype.Service;
+
+import pe.edu.idat.ms_devoluciones.client.LibroClient;
 import pe.edu.idat.ms_devoluciones.client.PrestamoClient;
 import pe.edu.idat.ms_devoluciones.exception.BusinessRuleException;
 import pe.edu.idat.ms_devoluciones.exception.DuplicateResourceException;
@@ -26,15 +28,18 @@ public class DevolucionServiceImpl implements DevolucionService {
     private final DevolucionRepository devolucionRepository;
     private final DevolucionMapper devolucionMapper;
     private final PrestamoClient prestamoClient;
+    private final LibroClient libroClient;
 
     public DevolucionServiceImpl(
             DevolucionRepository devolucionRepository,
             DevolucionMapper devolucionMapper,
-            PrestamoClient prestamoClient) {
+            PrestamoClient prestamoClient,
+            LibroClient libroClient) {
 
         this.devolucionRepository = devolucionRepository;
         this.devolucionMapper = devolucionMapper;
         this.prestamoClient = prestamoClient;
+        this.libroClient = libroClient;
     }
 
     @Override
@@ -58,8 +63,11 @@ public class DevolucionServiceImpl implements DevolucionService {
     public DevolucionResponse registrarDevolucion(
             DevolucionRequest request) {
 
-        validarPrestamo(request.getIdPrestamo());
+        // 1. Validar que el préstamo exista y esté activo
+        PrestamoClientResponse prestamo =
+                validarPrestamo(request.getIdPrestamo());
 
+        // 2. Verificar que no exista una devolución anterior
         boolean yaExiste =
                 devolucionRepository
                         .findByIdPrestamoAndEstadoTrue(
@@ -73,6 +81,7 @@ public class DevolucionServiceImpl implements DevolucionService {
             );
         }
 
+        // 3. Crear la devolución
         DevolucionEntity devolucion =
                 devolucionMapper.toEntity(request);
 
@@ -82,14 +91,21 @@ public class DevolucionServiceImpl implements DevolucionService {
                 LocalDateTime.now()
         );
 
+        // 4. Guardar la devolución
         DevolucionEntity guardada =
                 devolucionRepository.save(devolucion);
 
-        // Finaliza el préstamo en ms-prestamos
+        // 5. Finalizar el préstamo en ms-prestamos
         prestamoClient.finalizarPrestamo(
                 request.getIdPrestamo()
         );
 
+        // 6. Aumentar la disponibilidad del libro en ms-libros
+        libroClient.aumentarDisponibilidad(
+                prestamo.getIdLibro()
+        );
+
+        // 7. Retornar la devolución registrada
         return devolucionMapper.toResponse(
                 guardada
         );
@@ -105,7 +121,9 @@ public class DevolucionServiceImpl implements DevolucionService {
                         .orElseThrow(() ->
                                 new ResourceNotFoundException(
                                         "No existe devolución para el préstamo: "
-                                                + idPrestamo));
+                                                + idPrestamo
+                                )
+                        );
 
         return devolucionMapper.toResponse(
                 devolucion
@@ -129,18 +147,24 @@ public class DevolucionServiceImpl implements DevolucionService {
                 .findByIdDevolucionAndEstadoTrue(id)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
-                                "Devolución no encontrada con ID: " + id
-                        ));
+                                "Devolución no encontrada con ID: "
+                                        + id
+                        )
+                );
     }
 
-    private void validarPrestamo(Long idPrestamo) {
+    private PrestamoClientResponse validarPrestamo(
+            Long idPrestamo) {
 
         try {
 
             PrestamoClientResponse prestamo =
-                    prestamoClient.obtenerPrestamoPorId(idPrestamo);
+                    prestamoClient.obtenerPrestamoPorId(
+                            idPrestamo
+                    );
 
-            if (!Boolean.TRUE.equals(prestamo.getEstado())) {
+            if (!Boolean.TRUE.equals(
+                    prestamo.getEstado())) {
 
                 throw new BusinessRuleException(
                         "El préstamo no se encuentra activo."
@@ -155,6 +179,8 @@ public class DevolucionServiceImpl implements DevolucionService {
                 );
             }
 
+            return prestamo;
+
         } catch (FeignException.NotFound ex) {
 
             throw new ResourceNotFoundException(
@@ -163,5 +189,4 @@ public class DevolucionServiceImpl implements DevolucionService {
             );
         }
     }
-
 }

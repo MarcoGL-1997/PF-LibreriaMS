@@ -17,4 +17,7 @@ public interface LibroService {
 
     void eliminarLibro(Long id);
 
+    void disminuirDisponibilidad(Long id);
+
+    void aumentarDisponibilidad(Long id);
 }

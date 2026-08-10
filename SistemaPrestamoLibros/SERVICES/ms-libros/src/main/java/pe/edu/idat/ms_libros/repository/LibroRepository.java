@@ -16,6 +16,5 @@ public interface LibroRepository extends JpaRepository<LibroEntity, Long> {
 
     List<LibroEntity> findByEstadoTrue();
 
-    Optional<LibroEntity> findByIdAndEstadoTrue(Long id);
-
+    Optional<LibroEntity> findByIdLibroAndEstadoTrue(Long idLibro);
 }

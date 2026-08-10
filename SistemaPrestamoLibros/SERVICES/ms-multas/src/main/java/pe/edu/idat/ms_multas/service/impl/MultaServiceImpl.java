@@ -1,7 +1,9 @@
 package pe.edu.idat.ms_multas.service.impl;
 
 import feign.FeignException;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+
 import pe.edu.idat.ms_multas.client.PrestamoClient;
 import pe.edu.idat.ms_multas.exception.BusinessRuleException;
 import pe.edu.idat.ms_multas.exception.DuplicateResourceException;
@@ -33,9 +35,10 @@ public class MultaServiceImpl implements MultaService {
     private final MultaMapper multaMapper;
     private final PrestamoClient prestamoClient;
 
-    public MultaServiceImpl(MultaRepository multaRepository,
-                            MultaMapper multaMapper,
-                            PrestamoClient prestamoClient) {
+    public MultaServiceImpl(
+            MultaRepository multaRepository,
+            MultaMapper multaMapper,
+            PrestamoClient prestamoClient) {
 
         this.multaRepository = multaRepository;
         this.multaMapper = multaMapper;
@@ -60,73 +63,40 @@ public class MultaServiceImpl implements MultaService {
     }
 
     @Override
-    public MultaResponse registrarMulta(MultaRequest request) {
+    public MultaResponse registrarMulta(
+            MultaRequest request) {
 
         PrestamoClientResponse prestamo =
                 validarPrestamo(request.getIdPrestamo());
 
         boolean multaExistente =
-                multaRepository.existsByIdPrestamoAndEstadoTrue(
-                        request.getIdPrestamo()
-                );
+                multaRepository
+                        .existsByIdPrestamoAndEstadoTrue(
+                                request.getIdPrestamo()
+                        );
 
         if (multaExistente) {
+
             throw new DuplicateResourceException(
                     "El préstamo ya tiene una multa registrada."
             );
         }
 
-        LocalDate fechaActual = LocalDate.now();
-
-        if (prestamo.getFechaVencimiento() == null) {
-            throw new BusinessRuleException(
-                    "El préstamo no tiene una fecha de vencimiento válida."
-            );
-        }
-
-        if (!prestamo.getFechaVencimiento().isBefore(fechaActual)) {
-            throw new BusinessRuleException(
-                    "El préstamo todavía no se encuentra vencido."
-            );
-        }
-
-        long diasRetrasoCalculados =
-                ChronoUnit.DAYS.between(
-                        prestamo.getFechaVencimiento(),
-                        fechaActual
-                );
-
-        int diasRetraso =
-                Math.toIntExact(diasRetrasoCalculados);
-
-        BigDecimal monto =
-                MONTO_POR_DIA.multiply(
-                        BigDecimal.valueOf(diasRetraso)
-                );
-
-        MultaEntity multa =
-                multaMapper.toEntity(request);
-
-        multa.setDiasRetraso(diasRetraso);
-        multa.setMonto(monto);
-        multa.setFechaGeneracion(fechaActual);
-        multa.setFechaPago(null);
-        multa.setEstadoMulta(ESTADO_PENDIENTE);
-        multa.setEstado(true);
-        multa.setFechaRegistro(LocalDateTime.now());
-
-        MultaEntity multaGuardada =
-                multaRepository.save(multa);
-
-        return multaMapper.toResponse(multaGuardada);
+        return crearMulta(
+                prestamo,
+                request
+        );
     }
 
     @Override
-    public MultaResponse obtenerMultaPorPrestamo(Long idPrestamo) {
+    public MultaResponse obtenerMultaPorPrestamo(
+            Long idPrestamo) {
 
         MultaEntity multa =
                 multaRepository
-                        .findByIdPrestamoAndEstadoTrue(idPrestamo)
+                        .findByIdPrestamoAndEstadoTrue(
+                                idPrestamo
+                        )
                         .orElseThrow(() ->
                                 new ResourceNotFoundException(
                                         "No se encontró una multa para el préstamo con ID: "
@@ -190,18 +160,257 @@ public class MultaServiceImpl implements MultaService {
         multaRepository.save(multa);
     }
 
-    private MultaEntity obtenerEntidad(Long id) {
+    /**
+     * Proceso automático de generación de multas.
+     *
+     * Se ejecuta cada 60 segundos.
+     */
+    @Scheduled(fixedRate = 60000)
+    public void generarMultasAutomaticamente() {
+
+        try {
+
+            List<PrestamoClientResponse> prestamosVencidos =
+                    prestamoClient.listarPrestamosVencidos();
+
+            if (prestamosVencidos == null
+                    || prestamosVencidos.isEmpty()) {
+
+                return;
+            }
+
+            for (PrestamoClientResponse prestamo :
+                    prestamosVencidos) {
+
+                if (prestamo == null
+                        || prestamo.getIdPrestamo() == null) {
+
+                    continue;
+                }
+
+                boolean multaExistente =
+                        multaRepository
+                                .existsByIdPrestamoAndEstadoTrue(
+                                        prestamo.getIdPrestamo()
+                                );
+
+                if (multaExistente) {
+
+                    continue;
+                }
+
+                if (!Boolean.TRUE.equals(
+                        prestamo.getEstado())) {
+
+                    continue;
+                }
+
+                if (!"ACTIVO".equals(
+                        prestamo.getEstadoPrestamo())) {
+
+                    continue;
+                }
+
+                if (prestamo.getFechaVencimiento() == null) {
+
+                    continue;
+                }
+
+                if (!prestamo.getFechaVencimiento()
+                        .isBefore(LocalDate.now())) {
+
+                    continue;
+                }
+
+                crearMultaAutomatica(prestamo);
+            }
+
+        } catch (FeignException ex) {
+
+            System.err.println(
+                    "No fue posible consultar los préstamos vencidos: "
+                            + ex.getMessage()
+            );
+        }
+    }
+
+    /**
+     * Crea una multa a partir de un préstamo vencido.
+     */
+    private void crearMultaAutomatica(
+            PrestamoClientResponse prestamo) {
+
+        LocalDate fechaActual =
+                LocalDate.now();
+
+        long diasRetrasoCalculados =
+                ChronoUnit.DAYS.between(
+                        prestamo.getFechaVencimiento(),
+                        fechaActual
+                );
+
+        int diasRetraso =
+                Math.toIntExact(
+                        diasRetrasoCalculados
+                );
+
+        if (diasRetraso <= 0) {
+
+            return;
+        }
+
+        BigDecimal monto =
+                MONTO_POR_DIA.multiply(
+                        BigDecimal.valueOf(
+                                diasRetraso
+                        )
+                );
+
+        MultaEntity multa =
+                new MultaEntity();
+
+        multa.setIdPrestamo(
+                prestamo.getIdPrestamo()
+        );
+
+        multa.setDiasRetraso(
+                diasRetraso
+        );
+
+        multa.setMonto(
+                monto
+        );
+
+        multa.setFechaGeneracion(
+                fechaActual
+        );
+
+        multa.setFechaPago(
+                null
+        );
+
+        multa.setEstadoMulta(
+                ESTADO_PENDIENTE
+        );
+
+        multa.setEstado(
+                true
+        );
+
+        multa.setFechaRegistro(
+                LocalDateTime.now()
+        );
+
+        multaRepository.save(multa);
+
+        System.out.println(
+                "Multa automática generada. "
+                        + "Préstamo: "
+                        + prestamo.getIdPrestamo()
+                        + " | Días de retraso: "
+                        + diasRetraso
+                        + " | Monto: S/ "
+                        + monto
+        );
+    }
+
+    /**
+     * Crea una multa mediante el registro manual.
+     */
+    private MultaResponse crearMulta(
+            PrestamoClientResponse prestamo,
+            MultaRequest request) {
+
+        LocalDate fechaActual =
+                LocalDate.now();
+
+        if (prestamo.getFechaVencimiento() == null) {
+
+            throw new BusinessRuleException(
+                    "El préstamo no tiene una fecha de vencimiento válida."
+            );
+        }
+
+        if (!prestamo.getFechaVencimiento()
+                .isBefore(fechaActual)) {
+
+            throw new BusinessRuleException(
+                    "El préstamo todavía no se encuentra vencido."
+            );
+        }
+
+        long diasRetrasoCalculados =
+                ChronoUnit.DAYS.between(
+                        prestamo.getFechaVencimiento(),
+                        fechaActual
+                );
+
+        int diasRetraso =
+                Math.toIntExact(
+                        diasRetrasoCalculados
+                );
+
+        BigDecimal monto =
+                MONTO_POR_DIA.multiply(
+                        BigDecimal.valueOf(
+                                diasRetraso
+                        )
+                );
+
+        MultaEntity multa =
+                multaMapper.toEntity(request);
+
+        multa.setDiasRetraso(
+                diasRetraso
+        );
+
+        multa.setMonto(
+                monto
+        );
+
+        multa.setFechaGeneracion(
+                fechaActual
+        );
+
+        multa.setFechaPago(
+                null
+        );
+
+        multa.setEstadoMulta(
+                ESTADO_PENDIENTE
+        );
+
+        multa.setEstado(
+                true
+        );
+
+        multa.setFechaRegistro(
+                LocalDateTime.now()
+        );
+
+        MultaEntity multaGuardada =
+                multaRepository.save(multa);
+
+        return multaMapper.toResponse(
+                multaGuardada
+        );
+    }
+
+    private MultaEntity obtenerEntidad(
+            Long id) {
 
         return multaRepository
                 .findByIdMultaAndEstadoTrue(id)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
-                                "Multa no encontrada con ID: " + id
+                                "Multa no encontrada con ID: "
+                                        + id
                         )
                 );
     }
 
-    private PrestamoClientResponse validarPrestamo(Long idPrestamo) {
+    private PrestamoClientResponse validarPrestamo(
+            Long idPrestamo) {
 
         try {
 

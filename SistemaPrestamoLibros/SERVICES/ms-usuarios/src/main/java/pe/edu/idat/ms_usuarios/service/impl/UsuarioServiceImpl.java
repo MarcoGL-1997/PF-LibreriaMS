@@ -104,7 +104,7 @@ public class UsuarioServiceImpl implements UsuarioService {
 
     private UsuarioEntity obtenerEntidad(Long id) {
 
-        return usuarioRepository.findByIdAndEstadoTrue(id)
+      return usuarioRepository.findByIdUsuarioAndEstadoTrue(id)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
                                 "Usuario no encontrado con ID: " + id));

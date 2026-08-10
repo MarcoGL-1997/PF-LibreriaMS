@@ -3,6 +3,8 @@ package pe.edu.idat.ms_prestamos.client;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+
 import pe.edu.idat.ms_prestamos.model.dto.client.LibroClientResponse;
 
 @FeignClient(name = "ms-libros")
@@ -13,4 +15,13 @@ public interface LibroClient {
             @PathVariable("id") Long id
     );
 
+    @PutMapping("/api/libros/{id}/disminuir-disponibilidad")
+    void disminuirDisponibilidad(
+            @PathVariable("id") Long id
+    );
+
+    @PutMapping("/api/libros/{id}/aumentar-disponibilidad")
+    void aumentarDisponibilidad(
+            @PathVariable("id") Long id
+    );
 }
